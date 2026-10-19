@@ -220,7 +220,7 @@ export function StreamDetailClient({
                     : stream.status) as any
                 }
               />
-              <NetworkBadge showLabel={true} />
+              <NetworkBadge network={network} showLabel={true} />
             </div>
           </div>
 

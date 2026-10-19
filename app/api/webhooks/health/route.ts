@@ -22,7 +22,9 @@ export async function GET(request?: Request | NextRequest) {
   return withCorrelationContext(context, async () => {
     try {
       return await withTimeout(
-        (async () => {
+        WEBHOOK_TIMEOUT_MS,
+        request ?? {},
+        async () => {
           // TODO: Replace placeholder counts with real data-layer queries.
           // The stale count must be derived from pending deliveries whose last
           // attempt is older than WEBHOOK_TIMEOUT_MS. This is critical to
@@ -49,7 +51,7 @@ export async function GET(request?: Request | NextRequest) {
           // a pending delivery that exceeded WEBHOOK_TIMEOUT_MS. It should mark
           // the system degraded even if no hard failures have occurred.
           const status: WebhookHealthResponse["status"] =
-            delivery_stats.stale > 0 && baseStatus === "healthy"
+            delivery_stats.stale > 0 && baseStatus === "ok"
               ? "degraded"
               : baseStatus;
 
@@ -70,8 +72,7 @@ export async function GET(request?: Request | NextRequest) {
           });
 
           return NextResponse.json(body, { status: 200 });
-        })(),
-        WEBHOOK_TIMEOUT_MS,
+        },
       );
     } catch (error) {
       try {

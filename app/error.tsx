@@ -60,7 +60,7 @@ export default function GlobalError({ error, reset }: ErrorProps) {
         secondaryAction={
           <Link
             className="button button--secondary error-page__action"
-            href="/settings"
+            href="/help"
           >
             Contact support
           </Link>

@@ -63,15 +63,17 @@ import {
 } from "@/app/lib/logger";
 import {
   SseQueue,
-  encodeSSEFrame,
   flushQueue,
   sseMetricsLog,
 } from "@/lib/sseBackpressure";
 import type { SseOverflowPolicy } from "@/lib/sseBackpressure";
 
+import crypto from "crypto";
+
 // ---------------------------------------------------------------------------
 // Configuration helpers
 // ---------------------------------------------------------------------------
+
 
 /**
  * Milliseconds between status ticks.
@@ -160,7 +162,22 @@ export function getIndexerStatus(): IndexerStatus {
 // SSE frame helpers (delegated to lib/sseBackpressure)
 // ---------------------------------------------------------------------------
 
-// encodeSSEFrame is imported from lib/sseBackpressure and used directly below.
+/**
+ * Encodes a named SSE event frame.
+ *
+ * Format per the HTML living standard:
+ *   event: <name>\n
+ *   data: <json>\n
+ *   \n
+ */
+function encodeEvent(encoder: TextEncoder, event: string, data: unknown, id?: string): Uint8Array {
+  let output = `event: ${event}\n`;
+  if (id) {
+    output += `id: ${id}\n`;
+  }
+  output += `data: ${JSON.stringify(data)}\n\n`;
+  return encoder.encode(output);
+}
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -213,6 +230,8 @@ export async function GET(request: Request): Promise<Response> {
 
     const stream = new ReadableStream({
       async start(controller) {
+        let lastSentId = request.headers.get("last-event-id") ?? request.headers.get("Last-Event-ID") ?? null;
+
         /**
          * Stage one encoded SSE frame through the backpressure queue, then
          * immediately flush the queue into `controller`.
@@ -221,7 +240,14 @@ export async function GET(request: Request): Promise<Response> {
          *          so callers can break out of their loop early.
          */
         const send = (event: string, data: unknown): boolean => {
-          const chunk = encodeSSEFrame(encoder, event, data);
+          const id = crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex");
+          
+          if (id === lastSentId) {
+            return true; // Skip duplicate status
+          }
+          
+          lastSentId = id;
+          const chunk = encodeEvent(encoder, event, data, id);
           const result = sseQueue.enqueue(chunk);
 
           if (result === "dropped") {
